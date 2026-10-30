@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECMO-VA y barorreceptor · figura interactiva</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --mute: #555; --soft: #888; --line: #e6e6e6;
+    --nat: #E8743B; --ecmo: #2F6FD6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #fff; color: var(--ink);
+    font-family: Inter, "Helvetica Neue", system-ui, -apple-system, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .fig { max-width: 800px; margin: 0 auto; padding: 36px 32px 40px; }
+  h1 { font-size: 18px; font-weight: 700; line-height: 1.35; margin: 0 0 14px; letter-spacing: -0.01em; }
+
+  /* Barra de acciones */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 22px; }
+  .toolbar .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+  button {
+    font: inherit; font-size: 12.5px; color: var(--ink); background: #fff;
+    border: 1px solid #d6d6d6; border-radius: 6px; padding: 5px 10px; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  button:hover { background: #f5f5f5; border-color: #bbb; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ecmo); outline-offset: 2px; }
+  button.primary { font-weight: 600; min-width: 92px; }
+  button.preset { font-size: 12px; color: var(--mute); }
+
+  /* Paneles */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 0 36px; }
+  .panel h2 { font-size: 14px; font-weight: 700; margin: 0 0 4px; font-variant-numeric: tabular-nums; }
+  svg.plot { display: block; width: 100%; height: auto; overflow: visible; }
+  .tick { font-size: 9px; fill: #aaa; }
+  .lbl {
+    font-size: 10.5px; fill: var(--soft); font-variant-numeric: tabular-nums;
+    paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round;
+  }
+  .foot { margin-top: 8px; min-height: 40px; }
+  .foot b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .foot span { display: block; font-size: 12.5px; color: var(--mute); margin-top: 2px; }
+
+  /* Indicador espigas/s */
+  .rate { margin-top: 12px; }
+  .rate-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--mute); margin-bottom: 4px; }
+  .rate-head strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .rate-track { height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+  .rate-fill { height: 100%; width: 0; border-radius: 4px; background: var(--ecmo); transition: width .12s linear; }
+
+  /* Controles */
+  .controls { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .ctl { display: grid; grid-template-columns: 128px 1fr 66px; align-items: center; gap: 10px; margin: 8px 0; }
+  .ctl label { font-size: 12.5px; color: var(--mute); }
+  .ctl output { white-space: nowrap; font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  input[type=range] {
+    --c: var(--ecmo); --p: 50%;
+    -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0;
+    background: transparent; cursor: pointer;
+  }
+  .nat input[type=range] { --c: var(--nat); }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 2px;
+    background: linear-gradient(to right, var(--c) var(--p), #e3e3e3 var(--p));
+  }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: #e3e3e3; }
+  input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--c); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--c); box-shadow: 0 1px 2px rgba(0,0,0,.15);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid var(--c);
+  }
+
+  @media (max-width: 640px) {
+    .fig { padding: 24px 18px 32px; }
+    .panels { grid-template-columns: 1fr; row-gap: 40px; }
+    .ctl { grid-template-columns: 110px 1fr 66px; }
+  }
+</style>
+</head>
+<body>
+<main class="fig">
+  <h1 id="titulo" aria-live="polite">Con la misma PAM, el flujo continuo apenas estimula al barorreceptor</h1>
+
+  <div class="toolbar" role="toolbar" aria-label="Acciones de la figura">
+    <button id="btnAnimar" class="primary" type="button" aria-pressed="false">▶ Animar</button>
+    <button id="btnReset" type="button">Restablecer</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="preset" type="button" data-preset="shock">Shock cardiogénico + ECMO (PP 2)</button>
+    <button class="preset" type="button" data-preset="recuperacion">Recuperación parcial (PP 15)</button>
+    <button class="preset" type="button" data-preset="hta">Hipertensión nativa (160/90)</button>
+  </div>
+
+  <div class="panels">
+    <!-- ============ Corazón nativo ============ -->
+    <section class="panel nat" aria-labelledby="subNat">
+      <h2 id="subNat">Corazón nativo · 110/60 mmHg</h2>
+      <svg class="plot" id="svgNat" viewBox="0 0 360 264" role="img" aria-label="Curva de presión arterial del corazón nativo y descarga del barorreceptor"></svg>
+      <div class="foot"><b id="pieNatB"></b><span id="pieNatS"></span></div>
+      <div class="rate">
+        <div class="rate-head"><span>Descarga del barorreceptor</span><strong id="rateNatTxt">–</strong></div>
+        <div class="rate-track"><div class="rate-fill" id="rateNatBar"></div></div>
+      </div>
+      <div class="controls">
+        <div class="ctl"><label for="pas">PAS</label>
+          <input type="range" id="pas" min="70" max="200" step="1" value="110"><output for="pas" id="pasOut"></output></div>
+        <div class="ctl"><label for="pad">PAD</label>
+          <input type="range" id="pad" min="30" max="120" step="1" value="60"><output for="pad" id="padOut"></output></div>
+        <div class="ctl"><label for="fc">FC</label>
+          <input type="range" id="fc" min="40" max="150" step="1" value="70"><output for="fc" id="fcOut"></output></div>
+      </div>
+    </section>
+
+    <!-- ============ ECMO-VA ============ -->
+    <section class="panel ecmo" aria-labelledby="subEcmo">
+      <h2 id="subEcmo">ECMO-VA · ≈ 78/73 mmHg</h2>
+      <svg class="plot" id="svgEcmo" viewBox="0 0 360 264" role="img" aria-label="Curva de presión arterial con ECMO-VA y descarga del barorreceptor"></svg>
+      <div class="foot"><b id="pieEcmoB"></b><span id="pieEcmoS"></span></div>
+      <div class="rate">
+        <div class="rate-head"><span>Descarga del barorreceptor</span><strong id="rateEcmoTxt">–</strong></div>
+        <div class="rate-track"><div class="rate-fill" id="rateEcmoBar"></div></div>
+      </div>
+      <div class="controls">
+        <div class="ctl"><label for="pam">PAM</label>
+          <input type="range" id="pam" min="40" max="110" step="1" value="75"><output for="pam" id="pamOut"></output></div>
+        <div class="ctl"><label for="pp">Pulsatilidad residual (PP)</label>
+          <input type="range" id="pp" min="0" max="40" step="1" value="5"><output for="pp" id="ppOut"></output></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------------- Configuración ---------------- */
+  const DEFAULTS = { pas: 110, pad: 60, fc: 70, pam: 75, pp: 5 };
+  const PRESETS = {
+    shock:        { pam: 75, pp: 2 },
+    recuperacion: { pam: 75, pp: 15 },
+    hta:          { pas: 160, pad: 90, fc: 70 }
+  };
+  const T_VENTANA = 2.6;          // s visibles (≈ 3 latidos a 70 lpm)
+  const F_ECMO = 2.1;             // Hz de la ondulación residual en ECMO
+  const P_MIN = 0, P_MAX = 200;   // eje vertical común (mmHg)
+
+  // Geometría del SVG (mismas coordenadas en ambos paneles)
+  const G = { x0: 26, x1: 318, xEnd: 360, yTop: 10, yBot: 210, spkTop: 226, spkBot: 261 };
+  const xDe = t => G.x0 + (t / T_VENTANA) * (G.x1 - G.x0);
+  const yDe = p => G.yBot - ((p - P_MIN) / (P_MAX - P_MIN)) * (G.yBot - G.yTop);
+
+  // Modelo del barorreceptor
+  const BARO = {
+    umbral: 50, saturacion: 180,  // mmHg
+    k1: 0.5,                      // espigas/s por mmHg sobre el umbral
+    k2: 0.18,                     // espigas/s por mmHg/s de dP/dt positivo
+    tasaMax: 250,                 // espigas/s
+    tauAdapt: 1.0, gAdapt: 0.9,   // adaptación: con P constante la tasa cae al 10 %
+    dt: 0.002, calentamiento: 4   // s de historia previa para estabilizar la adaptación
+  };
+
+  /* ---------------- Utilidades ---------------- */
+  const $ = id => document.getElementById(id);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const gauss = (t, mu, s) => Math.exp(-0.5 * ((t - mu) / s) ** 2);
+  const mod = (a, n) => ((a % n) + n) % n;
+
+  // Hash entero → [0,1): mismo número aleatorio para el mismo instante (sin parpadeo)
+  function azar(i, semilla) {
+    let h = (i * 2654435761 ^ semilla) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    return h / 4294967296;
+  }
+
+  // Catmull-Rom → Bézier cúbicas: path suave a partir de muestras
+  function pathSuave(pts) {
+    if (pts.length < 2) return '';
+    let d = `M ${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ` C ${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+    }
+    return d;
+  }
+
+  /* ---------------- Ondas ---------------- */
+
+  // Latido normalizado (0–1): Windkessel de 3 elementos (compliancia + resistencia periférica
+  // + impedancia característica) alimentado con un pulso gamma de eyección, más incisura y onda
+  // dícrota gaussianas.
+  const cacheLatido = new Map();
+  function latidoNormalizado(fc) {
+    if (cacheLatido.has(fc)) return cacheLatido.get(fc);
+    const Tb = 60 / fc, dt = 0.0005;
+    const esc = Math.sqrt(clamp(Tb / 0.857, 0.45, 1.6));
+    const k = 2.5, tp = 0.065 * esc, tEj = 0.28 * esc, tau = 0.8, zc = 0.5;
+    const n = Math.round(Tb / dt);
+    const Q = t => (t < tEj ? (t / tp) ** k * Math.exp(k * (1 - t / tp)) : 0); // pico = 1
+    const normalizar = a => {
+      let lo = Infinity, hi = -Infinity;
+      for (const v of a) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+      for (let i = 0; i < a.length; i++) a[i] = (a[i] - lo) / (hi - lo);
+    };
+    // Windkessel hasta estado estacionario (8 latidos); se guarda el último
+    let P = 0; const g = new Float64Array(n);
+    for (let b = 0; b < 8; b++)
+      for (let i = 0; i < n; i++) { P += (Q(i * dt) - P / tau) * dt; if (b === 7) g[i] = P; }
+    normalizar(g);
+    for (let i = 0; i < n; i++) g[i] += zc * Q(i * dt);        // componente de impedancia característica
+    normalizar(g);
+    const tn = tEj + 0.005;
+    for (let i = 0; i < n; i++) {
+      const t = i * dt;
+      g[i] += -0.06 * gauss(t, tn, 0.012)                       // incisura dícrota
+            +  0.08 * gauss(t, tn + 0.04, 0.025);               // onda dícrota
+    }
+    normalizar(g);
+    const res = { g, dt, Tb };
+    cacheLatido.set(fc, res);
+    return res;
+  }
+
+  // Devuelve P(t) y dP/dt(t) del corazón nativo
+  function generarOndaNativa({ pas, pad, fc }) {
+    const { g, dt, Tb } = latidoNormalizado(fc);
+    const n = g.length, pp = pas - pad, desfase = 0.12; // la ventana empieza en telediástole
+    const muestra = t => {
+      const x = mod(t - desfase, Tb) / dt, i = Math.floor(x), f = x - i;
+      return g[i % n] * (1 - f) + g[(i + 1) % n] * f;
+    };
+    const P = t => pad + pp * muestra(t);
+    const dP = t => (P(t + 0.001) - P(t - 0.001)) / 0.002;
+    return { P, dP, pas, pad, pp, pam: pad + pp / 3 };
+  }
+
+  // ECMO-VA: PAM casi constante con ondulación sinusoidal de pico a pico = PP
+  function generarOndaECMO({ pam, pp }) {
+    const w = 2 * Math.PI * F_ECMO;
+    const P = t => pam + (pp / 2) * Math.sin(w * t);
+    const dP = t => (pp / 2) * w * Math.cos(w * t);
+    return { P, dP, pas: pam + pp / 2, pad: pam - pp / 2, pp, pam };
+  }
+
+  /* ---------------- Barorreceptor ---------------- */
+  // tasa = k1·max(0, P − umbral) + k2·max(0, dP/dt), con saturación y adaptación lenta.
+  // Espigas por proceso de Poisson discretizado con semilla fija.
+  function calcularEspigas(onda, t0, T, semilla) {
+    const { dt, calentamiento } = BARO;
+    const iIni = Math.floor((t0 - calentamiento) / dt), iVis = Math.floor(t0 / dt), iFin = Math.floor((t0 + T) / dt);
+    const espigas = []; let adapt = null, dPmax = 0;
+    for (let i = iIni; i <= iFin; i++) {
+      const t = i * dt, p = onda.P(t), dp = onda.dP(t);
+      const estatico = BARO.k1 * Math.max(0, Math.min(p, BARO.saturacion) - BARO.umbral);
+      const dinamico = BARO.k2 * Math.max(0, dp);
+      const impulso = estatico + dinamico;
+      if (adapt === null) adapt = impulso;
+      adapt += ((impulso - adapt) / BARO.tauAdapt) * dt;
+      const tasa = clamp(impulso - BARO.gAdapt * adapt, 0, BARO.tasaMax);
+      if (i >= iVis) {
+        dPmax = Math.max(dPmax, dp);
+        if (azar(i, semilla) < tasa * dt) espigas.push(t);
+      }
+    }
+    return { espigas, porSegundo: espigas.length / T, dPmax };
+  }
+
+  /* ---------------- Clasificaciones del pie ---------------- */
+  const etiquetaDPdt = d => (d > 300 ? 'alto' : d > 60 ? 'moderado' : '≈ 0');
+  function etiquetaDescarga(porSeg, dPmax) {
+    if (porSeg >= 7 && dPmax > 60) return 'ráfagas de descarga en cada sístole';
+    if (porSeg < 3) return 'descarga escasa y adaptada';
+    return 'descarga intermedia';
+  }
+
+  /* ---------------- Dibujo ---------------- */
+  const NS = 'http://www.w3.org/2000/svg';
+  function crearEsqueleto(svg, color) {
+    svg.innerHTML = '';
+    const el = (tag, attrs, parent = svg) => {
+      const e = document.createElementNS(NS, tag);
+      for (const k in attrs) e.setAttribute(k, attrs[k]);
+      parent.appendChild(e); return e;
+    };
+    for (const v of [50, 100, 150]) {
+      el('line', { x1: 14, x2: 20, y1: yDe(v), y2: yDe(v), stroke: '#ccc', 'stroke-width': 1 });
+      const tx = el('text', { x: 11, y: yDe(v) + 3, 'text-anchor': 'end', class: 'tick' }); tx.textContent = v;
+    }
+    const pamLinea = el('line', { x1: G.x0, x2: G.xEnd, stroke: '#bbb', 'stroke-width': 1.2, 'stroke-dasharray': '5 4' });
+    const curva = el('path', { fill: 'none', stroke: color, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+    const pamTexto = el('text', { x: G.xEnd - 2, 'text-anchor': 'end', class: 'lbl' });
+    const espigas = el('path', { stroke: '#2F6FD6', 'stroke-width': 1, 'stroke-linecap': 'round', fill: 'none' });
+    return { pamLinea, curva, pamTexto, espigas };
+  }
+
+  const vista = {
+    nat: crearEsqueleto($('svgNat'), '#E8743B'),
+    ecmo: crearEsqueleto($('svgEcmo'), '#2F6FD6')
+  };
+
+  function dibujarPanel(v, onda, t0, res, etiquetaAbajo) {
+    const pts = [];
+    for (let t = 0; t <= T_VENTANA + 1e-9; t += 0.008) pts.push([xDe(t), yDe(onda.P(t0 + t))]);
+    v.curva.setAttribute('d', pathSuave(pts));
+    const yP = yDe(onda.pam);
+    v.pamLinea.setAttribute('y1', yP); v.pamLinea.setAttribute('y2', yP);
+    v.pamTexto.setAttribute('y', etiquetaAbajo ? yP + 14 : yP - 5);
+    v.pamTexto.textContent = `PAM ${Math.round(onda.pam)}`;
+    v.espigas.setAttribute('d', res.espigas
+      .map(t => { const x = xDe(t - t0).toFixed(2); return `M${x},${G.spkTop}V${G.spkBot}`; }).join(''));
+  }
+
+  function actualizarIndicadores(pre, onda, res) {
+    $(`pie${pre}B`).textContent = `PP ${Math.round(onda.pp)} mmHg · dP/dt ${etiquetaDPdt(res.dPmax)}`;
+    $(`pie${pre}S`).textContent = etiquetaDescarga(res.porSegundo, res.dPmax);
+    $(`rate${pre}Txt`).textContent = `${res.porSegundo.toFixed(1)} espigas/s`;
+    $(`rate${pre}Bar`).style.width = `${clamp(res.porSegundo / 30, 0, 1) * 100}%`;
+  }
+
+  /* ---------------- Estado y render ---------------- */
+  const ids = ['pas', 'pad', 'fc', 'pam', 'pp'];
+  const unidades = { pas: 'mmHg', pad: 'mmHg', fc: 'lpm', pam: 'mmHg', pp: 'mmHg' };
+  const leer = () => Object.fromEntries(ids.map(k => [k, +$(k).value]));
+  let t0 = 0;
+
+  function render() {
+    const s = leer();
+    const nat = generarOndaNativa(s);
+    const ecmo = generarOndaECMO(s);
+    const rNat = calcularEspigas(nat, t0, T_VENTANA, 0x51a7);
+    const rEcmo = calcularEspigas(ecmo, t0, T_VENTANA, 0x9e3b);
+
+    dibujarPanel(vista.nat, nat, t0, rNat, false);
+    dibujarPanel(vista.ecmo, ecmo, t0, rEcmo, true);
+
+    $('subNat').textContent = `Corazón nativo · ${nat.pas}/${nat.pad} mmHg`;
+    $('subEcmo').textContent = `ECMO-VA · ≈ ${Math.round(ecmo.pas)}/${Math.round(ecmo.pad)} mmHg`;
+    actualizarIndicadores('Nat', nat, rNat);
+    actualizarIndicadores('Ecmo', ecmo, rEcmo);
+
+    const titulo = Math.abs(nat.pam - ecmo.pam) > 10
+      ? 'Comparación de la estimulación del barorreceptor'
+      : 'Con la misma PAM, el flujo continuo apenas estimula al barorreceptor';
+    if ($('titulo').textContent !== titulo) $('titulo').textContent = titulo;
+  }
+
+  function sincronizarSalidas() {
+    for (const k of ids) {
+      const v = $(k).value, txt = `${v} ${unidades[k]}`;
+      $(`${k}Out`).textContent = txt;
+      $(k).setAttribute('aria-valuetext', txt);
+      const el = $(k), pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+      el.style.setProperty('--p', `${pct}%`);
+    }
+  }
+
+  // PAD siempre < PAS − 5
+  function respetarPAD(origen) {
+    const pas = +$('pas').value, pad = +$('pad').value;
+    if (pad > pas - 6) {
+      if (origen === 'pas') $('pad').value = Math.max(+$('pad').min, pas - 6);
+      else $('pad').value = pas - 6;
+    }
+  }
+
+  function aplicar(valores) {
+    for (const k in valores) $(k).value = valores[k];
+    respetarPAD('pas');
+    sincronizarSalidas();
+    render();
+  }
+
+  for (const k of ids) {
+    $(k).addEventListener('input', () => {
+      if (k === 'pas' || k === 'pad') respetarPAD(k);
+      sincronizarSalidas();
+      render();
+    });
+  }
+
+  /* ---------------- Animación ---------------- */
+  let animando = false, ultimo = null;
+  function paso(ts) {
+    if (!animando) return;
+    if (ultimo !== null) t0 += Math.min(0.1, (ts - ultimo) / 1000);
+    ultimo = ts;
+    render();
+    requestAnimationFrame(paso);
+  }
+  function alternarAnimacion(estado = !animando) {
+    animando = estado;
+    const b = $('btnAnimar');
+    b.textContent = animando ? '⏸ Pausar' : '▶ Animar';
+    b.setAttribute('aria-pressed', String(animando));
+    if (animando) { ultimo = null; requestAnimationFrame(paso); }
+  }
+  $('btnAnimar').addEventListener('click', () => alternarAnimacion());
+  $('btnReset').addEventListener('click', () => { alternarAnimacion(false); t0 = 0; aplicar(DEFAULTS); });
+  document.querySelectorAll('[data-preset]').forEach(b =>
+    b.addEventListener('click', () => aplicar(PRESETS[b.dataset.preset])));
+
+  aplicar(DEFAULTS);
+})();
+</script>
+</body>
+</html>
